@@ -25,6 +25,8 @@ parser = OptionParser()
 parser.add_option("--image", dest="train_image", help="Path to training image.")
 parser.add_option("--promap", dest="train_probability_map", help="Path to training probability map.")
 parser.add_option("--label", dest="train_label", help="Path to training label.")
+parser.add_option("--path", dest="path", help="Path to store the generated files.", default = r'C:\Users\sunzh\CS636\Summer project\BPN\data')
+
 parser.add_option("--cropped_size", dest='cropped_size',help='The size of image that network will use in the end',default=[36,36,25])
 
 parser.add_option("--network", dest="network", help="Base network to use. Supports ." , default = ['SAME','SAME'])
@@ -81,7 +83,7 @@ with open(config_output_filename, 'wb') as config_f:
 print('Data Generation')
 print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) )
 Preprocessing = preprocessing.Data(options.train_image, options.train_label, options.train_probability_map, C)
-FOV_Path, LABEL_Path, IMAGE_Path, FOV_size, Fov_num = Preprocessing.create_data(r'C:\Users\sunzh\CS636\Summer project\BPN\data')
+FOV_Path, LABEL_Path, IMAGE_Path, FOV_size, Fov_num = Preprocessing.create_data(options.path)
 
 print('Data Generation finished')
 print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) )
@@ -149,10 +151,10 @@ for big_epoch_num in range(num_epochs):
 
 				current_loss = First_Model.train_on_batch(Fov, Label)
 
-				if current_loss <0 and neg_flag == 0 :
-					tiff.imsave(r'C:\Users\sunzh\CS636\Summer project\BPN\fov.tif', Fov)
-					tiff.imsave(r'C:\Users\sunzh\CS636\Summer project\BPN\Label.tif', Label)
-					neg_flag = 1
+				# if current_loss <0 and neg_flag == 0 :
+				# 	tiff.imsave(r'C:\Users\sunzh\CS636\Summer project\BPN\fov.tif', Fov)
+				# 	tiff.imsave(r'C:\Users\sunzh\CS636\Summer project\BPN\Label.tif', Label)
+				# 	neg_flag = 1
 
 				loss += current_loss
 				Fov_predict = First_Model.predict_on_batch(Fov)
