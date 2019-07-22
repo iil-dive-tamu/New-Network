@@ -1,18 +1,22 @@
 import numpy as np
 from optparse import OptionParser
-from utils import config,preprocessing,losses
+from utils import config,preprocessing
 from utils.network import Network
 from utils.data_generator import Data_Generator
 import sys
 import pickle
 import itertools
-
-
+import traceback
+import time
 from tensorflow import keras
 from tensorflow.keras.optimizers import RMSprop
 from tensorflow.keras.layers import Input
 from tensorflow.keras.models import Model
 from tensorflow.keras.utils import Progbar
+from tensorflow.keras.backend import binary_crossentropy
+import tifffile as tiff
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 sys.setrecursionlimit(40000)
 
@@ -21,13 +25,13 @@ parser = OptionParser()
 parser.add_option("--image", dest="train_image", help="Path to training image.")
 parser.add_option("--promap", dest="train_probability_map", help="Path to training probability map.")
 parser.add_option("--label", dest="train_label", help="Path to training label.")
-parser.add_option("--cropped_size", dest='cropped_size',help='The size of image that network will use in the end',default=[128,128,25])
+parser.add_option("--cropped_size", dest='cropped_size',help='The size of image that network will use in the end',default=[36,36,25])
 
 parser.add_option("--network", dest="network", help="Base network to use. Supports ." , default = ['SAME','SAME'])
 parser.add_option("--structure", dest="structure", help="Base structure of network. Supports 3D or TD2D." , default = ['3D','3D'])
 
-parser.add_option("--num_first_epochs", dest="num_first_epochs", help="The number of epoch of the first CNN.")
-parser.add_option("--num_epochs", dest="num_epochs", help="The number of epoch of the whole network.")
+parser.add_option("--num_first_epochs", dest="num_first_epochs", help="The number of epoch of the first CNN.", default = 100)
+parser.add_option("--num_epochs", dest="num_epochs", help="The number of epoch of the whole network.", default = 10)
 
 parser.add_option("--config_filename", dest="config_filename", help=
 				"Location to store all the metadata related to the training (to be used when testing).",
@@ -35,7 +39,7 @@ parser.add_option("--config_filename", dest="config_filename", help=
 
 parser.add_option("--output_weight_path", dest="output_weight_path", help="Output path for weights.", default=['./weight1.hdf5','./weight2.hdf5'])
 parser.add_option("--input_weight_path", dest="input_weight_path", help="Input path for weights. If not specified, will initial the network by keras.", default = False)
-parser.add_option("--data_augment", type="bool", dest="data_augment", help="True to enable, False to disable.", default=False)
+parser.add_option("--data_augment", dest="data_augment", help="True to enable, False to disable.", default=False)
 
 (options, args) = parser.parse_args()
 
@@ -74,9 +78,13 @@ with open(config_output_filename, 'wb') as config_f:
 	print('Config has been written to {}, and can be loaded when testing to ensure correct results'.format(config_output_filename))
 ########################################################################
 # Acquisition of Data: FOV, Cropped Original Image and Whole Image
-Preprocessing = preprocessing.Data(options.train_image, options.train_label, options.train_probability_map, options.padding, C)
-FOV_Path, LABEL_Path, IMAGE_Path, FOV_size, Fov_num = Preprocessing.create_data(r'\data')
+print('Data Generation')
+print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) )
+Preprocessing = preprocessing.Data(options.train_image, options.train_label, options.train_probability_map, C)
+FOV_Path, LABEL_Path, IMAGE_Path, FOV_size, Fov_num = Preprocessing.create_data(r'C:\Users\sunzh\CS636\Summer project\BPN\data')
 
+print('Data Generation finished')
+print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) )
 # Input of 2 models
 FOV_input = Input(shape = FOV_size)
 Stack_input = Input(shape = FOV_size)
@@ -90,6 +98,7 @@ Second_Network_Output = Net.get_second_network(Stack_input)
 First_Model = Model(FOV_input, First_Network_Output)
 Second_Model = Model(Stack_input, Second_Network_Output)
 
+# print(First_Model.summary())
 # load the weight
 if options.input_weight_path:
 	First_Model.load_weights(options.input_weight_path[0], by_name=True)
@@ -97,8 +106,8 @@ if options.input_weight_path:
 
 # Complie the model
 optimizer = RMSprop(lr=1e-5)
-First_Model.comile(optimizer = optimizer, loss = losses.binary_crossentropy )
-Second_Model.comile(optimizer = optimizer, loss = losses.binary_crossentropy)
+First_Model.compile(optimizer = optimizer, loss = binary_crossentropy )
+Second_Model.compile(optimizer = optimizer, loss = binary_crossentropy)
 
 # Threshold and epochs for 2 CNNs
 first_threshold = C.first_threshold
@@ -109,8 +118,11 @@ num_epochs = int(options.num_epochs)
 
 # Initial Data class
 Data = Data_Generator(C)
-
+print('Start training')
+neg_flag = 0
 # The start of
+
+################################ Remove the data from last iteration
 for big_epoch_num in range(num_epochs):
 	###########################################################################
 							#First CNN
@@ -118,8 +130,9 @@ for big_epoch_num in range(num_epochs):
 	first_loss = np.zeros(num_first_epochs)
 	final_epoch_num = 0
 	for epoch_num in range(num_first_epochs):
-		progbar = Progbar(num_first_epochs)
+		progbar = Progbar(Fov_num)
 		print('Epoch of the First CNN {}/{}'.format(epoch_num+1, num_first_epochs))
+		print('There are %d FOVs in total'%(Fov_num))
 		loss = 0
 		count = 0
 		change_matrix = 0
@@ -128,26 +141,43 @@ for big_epoch_num in range(num_epochs):
 		while count <= Fov_num:
 			try:
 				## 设计思想，读取一次 训练一个batch，使用itertools， 一旦停止即进行下一个 for循环
-
+				# print('The %d epoch of the first CNN in %d big epoch'%(count, big_epoch_num))
 				Fov, Label, Image, x, y, z = next(first_data_generator)
 				Fov, Label = Data.data_concatenate(Fov, Label, Image)
+
 				count += 1
+
 				current_loss = First_Model.train_on_batch(Fov, Label)
+
+				if current_loss <0 and neg_flag == 0 :
+					tiff.imsave(r'C:\Users\sunzh\CS636\Summer project\BPN\fov.tif', Fov)
+					tiff.imsave(r'C:\Users\sunzh\CS636\Summer project\BPN\Label.tif', Label)
+					neg_flag = 1
+
 				loss += current_loss
 				Fov_predict = First_Model.predict_on_batch(Fov)
 
 				Data.data_save(Fov_predict, FOV_Path, x, y, z, epoch_num,big_epoch_num)
 
-				changes = Fov_predict - Fov
+				changes = np.sum(np.abs( Fov_predict - Fov))
 				change_matrix += changes
-				progbar.update(epoch_num+1, [('loss',current_loss),('changes',changes)])
+				progbar.update(count, [('loss',current_loss),('changes',changes)])
+				# print('loss:',current_loss)
 
 				######退出机制######
 			except Exception as e:
-				print('Exception: {}'.format(e))
+				# print('Exception: {}'.format(e))
+				traceback.print_exc()
 				continue
+		print('Training of the first CNN finished ')
+		print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) )
 
 		Data.data_exchange(FOV_Path, epoch_num+1, big_epoch_num )
+		print('Belief Propagation finished')
+
+		print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) )
+
+		Data.data_remove(FOV_Path, epoch_num, big_epoch_num )
 
 		final_epoch_num = epoch_num+1
 		first_loss[epoch_num] = loss/count
@@ -158,10 +188,11 @@ for big_epoch_num in range(num_epochs):
 			break
 		First_Model.save(options.output_weight_path[0])
 	print('Training of the first CNN is finished and loss is %F'%(np.mean(first_loss)))
-
+	print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) )
 	###########################################################################
 							#Second CNN
 	###########################################################################
+
 
 	print("Training of the second network starts")
 	loss = 0
@@ -183,12 +214,18 @@ for big_epoch_num in range(num_epochs):
 			continue
 
 	Second_Model.save(options.output_weight_path[1])
+
+	print('Training of 2nd CNN finished')
+	print (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) )
+
+
 	print('loss of the second CNN in %d round is %f'%(big_epoch_num, loss/count))
 	if loss/count < second_threshold:
 		print('Probability map satisfy the requirement and training finished in %d th round'%(big_epoch_num))
 		break
 	else:
-		test_shape, test_num = Preprocessing.for_next_iteration(FOV_Path, output_probability_map, big_epoch_num)
+		test_shape, test_num = Preprocessing.for_next_iteration(FOV_Path, output_probability_map, big_epoch_num+1)
+		Data.data_remove(FOV_Path, final_epoch_num, big_epoch_num)
 
 		if test_shape != FOV_size:
 			print("The size of generated data %d and the original data %d are not the same."%(test_shape, FOV_size))

@@ -21,7 +21,7 @@ class Config:
 		self.balanced_classes = False
 
 		# Boundary Pixel/Voxel setting
-		self.boundary_padding = 'NONE'
+		self.boundary_padding = 'SAME'
 
 		# Enable sample FOV or disable. sample_stride works in Height and Width, sample_rate works in depth or channel
 		self.sample_fov = False
@@ -29,7 +29,7 @@ class Config:
 		self.stride_depth = 1
 
 		# The real input size of FOV
-		self.cropped_size = [128,128,25]
+		self.cropped_size = [48,48,25]
 		self.base_net_weights = None
 
 		# Flag of mean=0 std=1 transformation

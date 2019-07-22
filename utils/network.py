@@ -52,31 +52,36 @@ class Network:
 		# output 17*17*9
 		x = Conv3D(2, 3, activation='relu', padding='same', name='block1_conv1')(input_tensor)
 		x = Conv3D(2, 3, activation='relu', padding='same', name='block1_conv2')(x)
-		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same')(x)
+		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same', name = 'pooling1')(x)
 		# Block 2
 		# output 9*9*5
 		x = Conv3D(1, 3, activation='relu', padding='same', name='block2_conv1')(x)
 		x = Conv3D(1, 3, activation='relu', padding='same', name='block2_conv2')(x)
-		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same')(x)
+		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same',name = 'pooling2')(x)
 		# Block 3
 		# output 5*5*3
 		x = Conv3D(1, 3, activation='relu', padding='same', name='block3_conv1')(x)
 		x = Conv3D(1, 3, activation='relu', padding='same', name='block3_conv2')(x)
-		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same')(x)
+		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same',name = 'pooling3')(x)
 		# Block 4
 		# output 3*3*2
 		x = Conv3D(1, 3, activation='relu', padding='same', name='block4_conv1')(x)
 		x = Conv3D(1, 3, activation='relu', padding='same', name='block4_conv2')(x)
-		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same')(x)
+		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same',name = 'pooling4')(x)
 
 		# Block 5
 		# output 2*2*1
 		x = Conv3D(1, 3, activation='relu', padding='same', name='block5_conv1')(x)
 		x = Conv3D(1, 3, activation='relu', padding='same', name='block5_conv2')(x)
-		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same')(x)
+		x = MaxPooling3D(pool_size=(2, 2, 2),padding='same',name = 'pooling5')(x)
 
+		# Block 6
+		# output 2*2*1
+		x = Conv3D(1, 3, activation='relu', padding='same', name='block6_conv1')(x)
+		x = Conv3D(1, 3, activation='relu', padding='same', name='block6_conv2')(x)
+		x = MaxPooling3D(pool_size=(2, 2, 1),padding='same',name = 'pooling6')(x)
 
-		x = Flatten()(x)
-		x = TimeDistributed(Dense(1, activation = 'relu'))(x)
+		x = TimeDistributed(Flatten(name = 'flatten'))(x)
+		x = TimeDistributed(Dense(1, activation = 'relu', name = 'dense'))(x)
 
 		return x

@@ -4,7 +4,7 @@ from memory_profiler import profile
 
 
 class Data:
-	def __init__(self, input_image = None ,input_label = None, input_probability_map= None, Config = None):
+	def __init__(self, input_image = None ,input_label = None, input_probability_map= None, Config = None, LLR = True):
 		"""
 		:param input_image: Folder path of input image, coming from parser
 		:param input_label:  Folder path of input label, coming from parser
@@ -29,21 +29,25 @@ class Data:
 		if self.size == None or len(self.size) != 3:
 			raise ValueError("ValueError: Please specify the size of FOV, it must be in the format of [x,y,z]")
 		if self.cropped_size[0] < self.size[0] or self.cropped_size[1] < self.size[1] or self.cropped_size[2] < self.size[2]:
+			print('The size of cropped image is %d, %d, %d'%(self.cropped_size[0],self.cropped_size[1],self.cropped_size[2]))
+			print('The size of fov is %d, %d, %d'%(self.size[0],self.size[1],self.size[2]))
 			raise ValueError('ValueError: The size of cropped image must larger then that of the Field of View')
 
 		## Read the image, label and probability map
 		Image = tiff.imread(input_image)
 		Label = tiff.imread(input_label)
 		Promap = tiff.imread(input_probability_map)
-		Image = np.transpose(Image, (2,0,1)).astype('float32')
-		Label = np.transpose(Label, (2,0,1)).astype('float32')
-		Promap = np.transpose(Promap, (2,0,1)).astype('float32')
+		Image = np.transpose(Image, (1,2,0)).astype('float32')
+		Label = np.transpose(Label, (1,2,0)).astype('float32')
+		Promap = np.transpose(Promap, (1,2,0)).astype('float32')
 
 		# Image Shape Exam
 		if Image.shape != Label.shape or Image.shape != Promap.shape or Label.shape != Promap.shape:
 			raise ValueError("ValueError: Image, Promap and Label should have the same size with each other")
 		if Image.shape[0] < self.cropped_size[0] or Image.shape[1] < self.cropped_size[1] or Image.shape[2] < self.cropped_size[2]:
-			raise ValueError("ValueError: The size of cropped image should smaller then that of the original image")
+			raise ValueError("ValueError: The size of cropped image should smaller then that of the original image",
+			                 'The size of cropped image is %d, %d, %d'%(self.cropped_size[0],self.cropped_size[1],self.cropped_size[2]),
+			                 'The size of Image is %d, %d, %d'%(Image.shape[0],Image.shape[1],Image.shape[2]))
 
 		# Crop the image according to the config
 		self.image = Image[0:self.cropped_size[0], 0:self.cropped_size[1], 0:self.cropped_size[2]]
@@ -52,7 +56,9 @@ class Data:
 
 		# Get 0-1 label and apply LLR transormation
 		self.label = self.label_making(self.label)
-		self.promap = self.LLR(self.promap)
+
+		if LLR:
+			self.promap = self.LLR(self.promap)
 
 		# Mean = 0, Std = 1, only for input image
 		if Config.featurewise_center == True:
@@ -102,7 +108,8 @@ class Data:
 			raise ValueError('path should be string')
 
 		r_xy = int((self.size[0]-1)/2)
-		r_z = max( int((self.size[2]-1) /2), 1)
+		# r_z = max( int((self.size[2]-1) /2), 1)
+		r_z = max( int((self.size[2]-1) /2), 0)
 
 		FOV_num = 0
 
@@ -148,7 +155,7 @@ class Data:
 		FOV_num = 0
 
 		r_xy = int((self.size[0]-1)/2)
-		r_z = max( int((self.size[2]-1) /2), 1)
+		r_z = max( int((self.size[2]-1) /2), 0)
 		output_probability_map = self.LLR(output_probability_map)
 
 		FOV_same = np.zeros((self.promap.shape[0]+self.size[0]-1, self.promap.shape[1]+self.size[1]-1, self.promap.shape[2]+self.size[2]-1)).astype('float32')
@@ -168,16 +175,16 @@ class Data:
 		return  shape, FOV_num
 
 
-	def LLR(self, Label):
+	def LLR(self, Promap):
 		"""
 		Apply Log-LogistRatio transformation
 		:param Label: The input lable
 		:return: The input lable with LLR value
 		"""
-		L = Label.astype('float64')
-		epsilon = 0.0000001
-		Label = np.log2(L/((1-L)+epsilon))
-		return Label
+		L = Promap.astype('float64')
+		epsilon = 0.00001
+		Promap = np.log2(L/((1-L)+epsilon))
+		return Promap
 
 
 # def create_data(self, path = None):
