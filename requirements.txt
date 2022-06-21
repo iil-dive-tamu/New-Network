@@ -11,7 +11,7 @@ Keras-Preprocessing==1.1.0
 Markdown==3.1.1
 memory-profiler==0.55.0
 mock==3.0.5
-numpy==1.14.5
+numpy==1.22.0
 protobuf==3.9.0
 psutil==5.6.3
 pyqt5-tools==5.11.3.1.4
